@@ -1,0 +1,3 @@
+This area contains a small amount of test data from the batch system log data. Currently, this is only a single day's worth of data, but represents approximately 250 MB of data covering 200k job submissions. Though a very small portion of the dataset, it is sufficient for the purpose of small-scale development.
+
+The full dataset can be found on Globus in the `Tachyon_DRS_Share` collection under the `BatchSystem-FNAL` directory. The dataset is spread across three years in three subdirectories: `2022`, `2023`, and `2024`.
