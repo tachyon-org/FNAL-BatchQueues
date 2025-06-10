@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# C extensions and build artifacts
+*.egg
+*.egg-info/
+build/
+dist/
+src/*.egg-info/
+
+# Editable installs
+*.manifest
+*.spec
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# IDE and editor settings
+.vscode/
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Coverage and testing
+.coverage
+.cache/
+.pytest_cache/
+htmlcov/
+.tox/
+
+# Type checker cache
+.mypy_cache/
+
+# Sphinx docs
+docs/_build/
+
+# Project-specific files
+*.sqlite
+*.db
+*.csv
+*.json
+*.yaml
+config.toml
