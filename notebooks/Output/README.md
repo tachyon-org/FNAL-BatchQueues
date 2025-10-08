@@ -1,1 +1,1 @@
-Outout in json for CodeAttemptFNAL
+//Output from CodeAttemptFNAL script in json
