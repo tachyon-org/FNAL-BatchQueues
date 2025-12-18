@@ -37,8 +37,44 @@ CHAR_TYPE_CHOICES = ["digit", "lower", "upper", "punct"]
 
 # Experiments we treat as "known"; this is used when scanning environment
 # strings to detect experiment tokens.
-KNOWN_EXPERIMENTS = {"uboone", "icarus", "pip2", "nova", "dune"}
+DEFAULT_KNOWN_EXPERIMENTS = {"uboone", "icarus", "pip2", "nova", "dune", "minerva"}
 
+# ---------------------------------------------------------------------------
+# Loading config for experiments
+# ---------------------------------------------------------------------------
+
+def load_known_experiments(config_path: str | Path | None = None) -> set[str]:
+    """
+    Load known experiments from config file.
+    Searches in:
+      1. provided config_path (if any)
+      2. project's `tools/anon_fnal_config.json` (relative to this file)
+      3. otherwise uses defaults
+    """
+    experiments = set(DEFAULT_KNOWN_EXPERIMENTS)
+
+    # 1. If user explicitly passed a path, use it.
+    if config_path:
+        config_path = Path(config_path).expanduser()
+    else:
+        # 2. Default location in the project
+        module_dir = Path(__file__).resolve().parent
+        project_root = module_dir.parent  # up one level
+        config_path = project_root / "tools" / "anon_fnal_config.json"
+
+    if not config_path.is_file():
+        return experiments
+
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        items = data.get("known_experiments", [])
+        experiments |= {str(x).strip() for x in items if str(x).strip()}
+    except Exception as e:
+        print(f"[load_known_experiments] Warning: {e}; using defaults.")
+
+    return experiments
+
+KNOWN_EXPERIMENTS = load_known_experiments()
 
 # ---------------------------------------------------------------------------
 # Data structures for anonymization
@@ -108,7 +144,7 @@ class GarbleTokenMapper:
         self._counter = self.start - 1
 
     @staticmethod
-    def _extract_trailing_int(s: str) -> Optional[int]:
+    def extract_trailing_int(s: str) -> Optional[int]:
         """
         Extract an integer at the end of a string, if present.
 
@@ -117,7 +153,7 @@ class GarbleTokenMapper:
         m = re.search(r"(\d+)$", str(s))
         return int(m.group(1)) if m else None
 
-    def _next_token(self) -> str:
+    def next_token(self) -> str:
         """Increment the internal counter and return the next token string."""
         self._counter += 1
         return f"{self.prefix}{self._counter}"
@@ -147,7 +183,7 @@ class GarbleTokenMapper:
             rec.count += 1
             return rec.token
 
-        token = self._next_token()
+        token = self.next_token()
         self._seen_tokens.add(token)
         rec = UserRecord(token=token, count=1, valid=bool(valid))
         self._by_orig[key] = rec
@@ -227,7 +263,7 @@ class GarbleTokenMapper:
             self._seen_tokens.add(token)
 
             # Try to infer the numeric part at the end of the token
-            n = self._extract_trailing_int(token)
+            n = self.extract_trailing_int(token)
             if n is not None:
                 max_num = max(max_num, n)
 
@@ -544,12 +580,12 @@ def make_summary_payload(
 # Parsing Env / formatting for text reports
 # ---------------------------------------------------------------------------
 
-def _s(x):
+def s(x):
     """Convert a value to string, treating NaN/None as empty string."""
     return "" if pd.isna(x) else str(x)
 
 
-def _parse_env(env_raw):
+def parse_env(env_raw):
     """
     Parse various possible Environment representations into a list of (key, value).
 
@@ -560,7 +596,7 @@ def _parse_env(env_raw):
     - delimited "KEY=VAL" strings (by ; , or newline)
     - fallback: returns [("ENV", original_string)]
     """
-    def _sort_key(pair):
+    def sort_key(pair):
         # Sort keys case-insensitively
         return pair[0].lower()
 
@@ -576,7 +612,7 @@ def _parse_env(env_raw):
             for k, v in obj.items():
                 val = "" if v is None else str(v)
                 pairs.append((str(k), val))
-            return sorted(pairs, key=_sort_key)
+            return sorted(pairs, key=sort_key)
 
         if isinstance(obj, list):
             pairs = []
@@ -593,7 +629,7 @@ def _parse_env(env_raw):
                 else:
                     # fallback for weird list entries
                     pairs.append(("ITEM", str(item)))
-            return sorted(pairs, key=_sort_key)
+            return sorted(pairs, key=sort_key)
     except Exception:
         # Not valid JSON; fall through to other heuristics
         pass
@@ -609,7 +645,7 @@ def _parse_env(env_raw):
                 for k, v in obj.items():
                     val = "" if v is None else str(v)
                     pairs.append((str(k), val))
-                return sorted(pairs, key=_sort_key)
+                return sorted(pairs, key=sort_key)
         except Exception:
             pass
 
@@ -632,18 +668,18 @@ def _parse_env(env_raw):
             k, v = token.split("=", 1)
             pairs.append((k.strip(), v.strip()))
     if pairs:
-        return sorted(pairs, key=_sort_key)
+        return sorted(pairs, key=sort_key)
 
     # Could not parse into pairs; return single fallback entry
     return [("ENV", s)]
 
 
-def _wrap_block(text, width):
+def wrap_block(text, width):
     """Wrap text to a given width, preserving whitespace where possible."""
     return fill(_s(text), width=width, replace_whitespace=False)
 
 
-def _format_env_block(env_pairs, width, indent_spaces=2):
+def format_env_block(env_pairs, width, indent_spaces=2):
     """
     Format environment key/value pairs as a pretty, wrapped block of text.
 
@@ -666,7 +702,7 @@ def _format_env_block(env_pairs, width, indent_spaces=2):
     return indent("\n".join(lines), " " * indent_spaces)
 
 
-def _extract_user_handle(user_val: str) -> str:
+def extract_user_handle(user_val: str) -> str:
     """
     Extract a "handle" from a user identifier.
 
@@ -718,14 +754,14 @@ def build_sensitive_mappers_for_df(
     # Collect user handles
     if user_col in df.columns:
         for u in df[user_col].dropna().astype(str):
-            h = _extract_user_handle(u)
+            h = extract_user_handle(u)
             if h:
                 handles.add(h)
 
     # Collect experiments seen in Environment plus KNOWN_EXPERIMENTS anywhere in raw string.
     if env_col in df.columns:
         for raw in df[env_col].dropna().astype(str):
-            pairs = _parse_env(raw)
+            pairs = parse_env(raw)
             for k, v in pairs:
                 if k.upper() == "EXPERIMENT" and v:
                     experiments.add(v.strip())
@@ -792,11 +828,11 @@ def greedy_replace(text: str, mapping: dict[str, str], pattern: re.Pattern) -> s
     if not text:
         return text
 
-    def _sub(m):
+    def sub(m):
         orig = m.group(0)
         return mapping.get(orig, orig)
 
-    return pattern.sub(_sub, text)
+    return pattern.sub(sub, text)
 
 
 def garble_user_email(email: str, user_handle_map: dict[str, str], pat: re.Pattern) -> str:
@@ -949,19 +985,19 @@ def write_cmd_env_report(
                         continue
                     # Wrap really long metadata values so they don't blow up formatting
                     if len(val) > human_wrap:
-                        val = _wrap_block(val, human_wrap)
+                        val = wrap_block(val, human_wrap)
                     parts.append(f"{c}: {val}")
 
         # Cmd section
         if cmd_col in row.index:
             parts.append("Cmd:")
-            parts.append(indent(_wrap_block(row[cmd_col], human_wrap), "  "))
+            parts.append(indent(wrap_block(row[cmd_col], human_wrap), "  "))
 
         # Environment section
         if env_col in row.index:
             parts.append("Environment:")
-            env_pairs = _parse_env(row[env_col])
-            parts.append(_format_env_block(env_pairs, width=human_wrap, indent_spaces=2))
+            env_pairs = parse_env(row[env_col])
+            parts.append(format_env_block(env_pairs, width=human_wrap, indent_spaces=2))
 
         return "\n".join(parts)
 
@@ -995,7 +1031,7 @@ def write_cmd_env_report(
 # Site selection helpers
 # ---------------------------------------------------------------------------
 
-def _canonicalize_site(
+def canonicalize_site(
     df: pd.DataFrame,
     site_col: str,
     requested: str,
@@ -1090,7 +1126,7 @@ def site_jobs_payload(
         }
     """
     # Try to match requested site to something that actually appears in df
-    is_valid, canonical_site, match_note = _canonicalize_site(
+    is_valid, canonical_site, match_note = canonicalize_site(
         df, site_col=site_col, requested=site_name, case_insensitive=case_insensitive
     )
 
