@@ -1,0 +1,10 @@
+{
+  "known_experiments": [
+    "uboone",
+    "icarus",
+    "pip2",
+    "nova",
+    "dune",
+    "minerva"
+  ]
+}
