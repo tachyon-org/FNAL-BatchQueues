@@ -580,7 +580,7 @@ def make_summary_payload(
 # Parsing Env / formatting for text reports
 # ---------------------------------------------------------------------------
 
-def s(x):
+def safe_str(x) -> str:
     """Convert a value to string, treating NaN/None as empty string."""
     return "" if pd.isna(x) else str(x)
 
@@ -600,7 +600,7 @@ def parse_env(env_raw):
         # Sort keys case-insensitively
         return pair[0].lower()
 
-    s = _s(env_raw).strip()
+    s = safe_str(env_raw).strip()
     if not s:
         return []
 
@@ -676,7 +676,7 @@ def parse_env(env_raw):
 
 def wrap_block(text, width):
     """Wrap text to a given width, preserving whitespace where possible."""
-    return fill(_s(text), width=width, replace_whitespace=False)
+    return fill(safe_str(text), width=width, replace_whitespace=False)
 
 
 def format_env_block(env_pairs, width, indent_spaces=2):
@@ -709,11 +709,10 @@ def extract_user_handle(user_val: str) -> str:
     If it looks like an email (contains '@'), return the part before '@'.
     Otherwise, just return the stripped string.
     """
-    s = _s(user_val)
+    s = safe_str(user_val)
     if "@" in s:
         return s.split("@", 1)[0].strip()
     return s.strip()
-
 
 # ---------------------------------------------------------------------------
 # Garbling user handles and experiments inside text fields
@@ -842,7 +841,7 @@ def garble_user_email(email: str, user_handle_map: dict[str, str], pat: re.Patte
     If the string is not email-like (no '@'), treat the entire string as a
     handle container and replace handles wherever they appear.
     """
-    s = _s(email)
+    s = safe_str(email)
     if "@" not in s:
         # Not an email; just treat as generic text with possible handles
         return greedy_replace(s, user_handle_map, pat)
@@ -891,16 +890,16 @@ def garble_row_fields(
     out = row.to_dict()
 
     if user_col in row.index:
-        out[user_col] = garble_user_email(_s(row[user_col]), user_handle_map, pat_user)
-
+        out[user_col] = garble_user_email(safe_str(row[user_col]), user_handle_map, pat_user)
+        
     if cmd_col in row.index and pd.notna(row[cmd_col]):
-        s = _s(row[cmd_col])
+        s = safe_str(row[cmd_col])
         s = greedy_replace(s, user_handle_map, pat_user_anywhere)
         s = greedy_replace(s, experiment_map, pat_exp)
         out[cmd_col] = s
 
     if env_col in row.index and pd.notna(row[env_col]):
-        s = _s(row[env_col])
+        s = safe_str(row[cmd_col])
         s = greedy_replace(s, user_handle_map, pat_user_anywhere)
         s = greedy_replace(s, experiment_map, pat_exp)
         out[env_col] = s
@@ -979,7 +978,7 @@ def write_cmd_env_report(
         if include_meta:
             for c in meta_cols:
                 if c in row.index:
-                    val = _s(row[c])
+                    val = safe_str(row[c])
                     if c == cmd_col or c == env_col:
                         # Don't duplicate these; they have their own sections below.
                         continue
@@ -1010,7 +1009,7 @@ def write_cmd_env_report(
     if group_by and group_by in df.columns:
         # Group by e.g. User, so each group has a mini-header
         for gval, gdf in df.groupby(group_by, dropna=False):
-            header = f"## {group_by}: {_s(gval)}  (jobs: {len(gdf)})"
+            header = f"## {group_by}: {safe_str(gval)}  (jobs: {len(gdf)})"
             lines_out += [header, "-" * len(header)]
             for i, (_, row) in enumerate(gdf.iterrows(), start=1):
                 lines_out.append(format_one(i, row))
